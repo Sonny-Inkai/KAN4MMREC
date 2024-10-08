@@ -86,7 +86,7 @@ class KAN4MMRec(GeneralRecommender):
         nll_u_t = -torch.sum(loglik_u_t, dim=-1).mean()
 
         # Average loss for transformed u_i and u_t
-        loss = (nll_u_i + nll_u_t) / 2
+        loss = (nll_u_i + nll_u_t) / 2 + self.reg_weight + self.cl_weight
         return loss
 
     def full_sort_predict(self, interaction):
