@@ -6,4 +6,3 @@ reg_weight: 0.1
 cl_weight: 1.0 
 
 use_neg_sampling: False 
-
