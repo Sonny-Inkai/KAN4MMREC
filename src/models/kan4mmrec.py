@@ -7,7 +7,7 @@ from timm.layers import use_fused_attn
 
 class KAN4MMREC(GeneralRecommender):
     def __init__(self, config, dataset):
-        super(KAN4MMRec, self).__init__(config, dataset)
+        super(KAN4MMREC, self).__init__(config, dataset)
 
         # Load configuration and dataset parameters
         self.embedding_size = config['embedding_size']
