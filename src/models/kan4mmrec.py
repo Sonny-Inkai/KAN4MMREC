@@ -48,8 +48,8 @@ class KAN4MMREC(GeneralRecommender):
         self.image_embedding_transformed = self.image_trs(self.image_embedding.weight)
         self.text_embedding_transformed = self.text_trs(self.text_embedding.weight)
         # Combine user embedding with image and text embeddings
-        u_i = torch.matmul(self.user_embedding.weight, self.image_embedding_transformed.weight.T)  # Shape: [num_users, num_items]
-        u_t = torch.matmul(self.user_embedding.weight, self.text_embedding_transformed.weight.T)  # Shape: [num_users, num_items]
+        u_i = torch.matmul(self.user_embedding, self.image_embedding_transformed.T)  # Shape: [num_users, num_items]
+        u_t = torch.matmul(self.user_embedding, self.text_embedding_transformed.T)  # Shape: [num_users, num_items]
 
         # Pass through the rational KAN-based transformer layers
         u_i_transformed = self.kan_siglip_image(u_i)  # [num_users, num_items]
