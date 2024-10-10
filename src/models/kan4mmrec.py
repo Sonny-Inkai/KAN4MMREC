@@ -5,7 +5,7 @@ from common.abstract_recommender import GeneralRecommender
 from utils.fasterkan import FasterKAN  # Advanced rational transformer-based architecture
 from timm.layers import use_fused_attn
 
-class KAN4MMRec(GeneralRecommender):
+class KAN4MMREC(GeneralRecommender):
     def __init__(self, config, dataset):
         super(KAN4MMRec, self).__init__(config, dataset)
 
