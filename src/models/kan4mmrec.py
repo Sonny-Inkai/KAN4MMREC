@@ -45,6 +45,8 @@ class KAN4MMREC(GeneralRecommender):
         self.kan_siglip_text = KANsiglip(self.embedding_size, self.n_layers, dropout=self.dropout)   # For user-text interactions
 
     def forward(self):
+        self.image_embedding = self.image_trs(self.image_embedding.weight)
+        self.text_embedding = self.text_trs(self.text_embedding.weight)
         # Combine user embedding with image and text embeddings
         u_i = torch.matmul(self.user_embedding.weight, self.image_embedding.weight.T)  # Shape: [num_users, num_items]
         u_t = torch.matmul(self.user_embedding.weight, self.text_embedding.weight.T)  # Shape: [num_users, num_items]
