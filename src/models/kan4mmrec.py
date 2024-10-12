@@ -45,11 +45,13 @@ class KAN4MMREC(GeneralRecommender):
         self.kan_siglip_text = KANsiglip(self.embedding_size, self.n_layers, dropout=self.dropout)   # For user-text interactions
 
     def forward(self):
-        self.image_embedding_transformed = self.image_trs(self.image_embedding.weight)
-        self.text_embedding_transformed = self.text_trs(self.text_embedding.weight)
+        # Transform embeddings
+        image_embedding_transformed = self.image_trs(self.image_embedding.weight)
+        text_embedding_transformed = self.text_trs(self.text_embedding.weight)
+        
         # Combine user embedding with image and text embeddings
-        u_i = torch.matmul(self.user_embedding, self.image_embedding_transformed.T)  # Shape: [num_users, num_items]
-        u_t = torch.matmul(self.user_embedding, self.text_embedding_transformed.T)  # Shape: [num_users, num_items]
+        u_i = torch.matmul(self.user_embedding.weight, image_embedding_transformed.T)  # Shape: [num_users, num_items]
+        u_t = torch.matmul(self.user_embedding.weight, text_embedding_transformed.T)  # Shape: [num_users, num_items]
 
         # Pass through the rational KAN-based transformer layers
         u_i_transformed = self.kan_siglip_image(u_i)  # [num_users, num_items]
@@ -57,12 +59,13 @@ class KAN4MMREC(GeneralRecommender):
 
         return u_i_transformed, u_t_transformed
 
-    def calculate_loss(self, interaction_matrix):
+    def calculate_loss(self, interaction):
         """
-        Calculate the loss using SIGLIP-like approach for user-item interactions.
+        Calculate the loss using SIGLIP-like approach for user-item interactions, including interaction labels for positive samples.
 
         Args:
-            interaction_matrix: Ground-truth interaction matrix [num_users, num_items], where 1 means interaction and 0 means no interaction.
+            interaction: Tuple containing users and items (ground-truth interaction matrix [num_users, num_items]),
+                         where users have interacted with the corresponding items.
         Returns:
             Total loss for training.
         """
@@ -87,8 +90,26 @@ class KAN4MMREC(GeneralRecommender):
         nll_u_i = -torch.sum(loglik_u_i, dim=-1).mean()
         nll_u_t = -torch.sum(loglik_u_t, dim=-1).mean()
 
-        # Average loss for transformed u_i and u_t
-        loss = (nll_u_i + nll_u_t) / 2 + self.reg_weight + self.cl_weight
+        # Interaction-based loss component
+        users = interaction[0]  # Batch of users
+        items = interaction[1]  # Corresponding items that users interacted with
+
+        # Get the interaction scores for these user-item pairs from both image and text transformations
+        interaction_u_i_scores = u_i_transformed[users, items]  # Shape: [batch_size]
+        interaction_u_t_scores = u_t_transformed[users, items]  # Shape: [batch_size]
+
+        # Labels for these interactions are all 1 (since they are positive samples)
+        labels = torch.ones_like(interaction_u_i_scores, device=u_i_transformed.device)
+
+        # Binary Cross-Entropy loss for interaction predictions
+        interaction_loss_u_i = torch.nn.functional.binary_cross_entropy_with_logits(interaction_u_i_scores, labels)
+        interaction_loss_u_t = torch.nn.functional.binary_cross_entropy_with_logits(interaction_u_t_scores, labels)
+
+        # Regularization term
+        reg_term = self.reg_weight * (self.user_embedding.weight.norm() + self.image_embedding.weight.norm() + self.text_embedding.weight.norm())
+
+        # Average loss for transformed u_i and u_t, including interaction loss
+        loss = (nll_u_i + nll_u_t).mean() + (interaction_loss_u_i + interaction_loss_u_t).mean() + reg_term + self.cl_weight
         return loss
 
     def full_sort_predict(self, interaction):
@@ -229,5 +250,3 @@ class KANLayer(nn.Module):
         x_mlp = self.mlp(self.norm2(x))
         x = x + self.drop_path(self.layer_scale(x_mlp))
         return x
-
-
