@@ -48,7 +48,7 @@ def ndcg_(pos_index, pos_len):
     len_rank = np.full_like(pos_len, pos_index.shape[1])
     idcg_len = np.where(pos_len > len_rank, len_rank, pos_len)
 
-    iranks = np.zeros_like(pos_index, dtype=np.float)
+    iranks = np.zeros_like(pos_index, dtype=np.float64)
     iranks[:, :] = np.arange(1, pos_index.shape[1] + 1)
     idcg = np.cumsum(1.0 / np.log2(iranks + 1), axis=1)
     for row, idx in enumerate(idcg_len):
