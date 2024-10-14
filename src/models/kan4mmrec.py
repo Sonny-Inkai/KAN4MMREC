@@ -66,7 +66,7 @@ class KAN4MMREC(GeneralRecommender):
 
     def calculate_loss(self, interaction):
         """
-        Calculate the loss using SIGLIP-like approach for user-item interactions, including interaction labels for positive samples.
+        Calculate the loss using SIGLIP-like approach for user-user , and loss including interaction labels for positive samples.
 
         Args:
             interaction: Tuple containing users and items (ground-truth interaction matrix [num_users, num_items]),
@@ -168,7 +168,7 @@ class KANTransformer(nn.Module):
         for layer in self.layers:
             x = layer(x)
         return x
-    
+
 class KANAttention(nn.Module):
     def __init__(
             self,
@@ -195,8 +195,8 @@ class KANAttention(nn.Module):
         self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
+        N, C = x.shape  # Since input shape [seq_length, emb_size]
+        qkv = self.qkv(x).reshape(N, 3, self.num_heads, self.head_dim).permute(1, 2, 0, 3)
         q, k, v = qkv.unbind(0)
         q, k = self.q_norm(q), self.k_norm(k)
 
@@ -212,11 +212,10 @@ class KANAttention(nn.Module):
             attn = self.attn_drop(attn)
             x = attn @ v
 
-        x = x.transpose(1, 2).reshape(B, N, C)
+        x = x.transpose(0, 1).reshape(N, C)
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
-    
 class KANLayerScale(nn.Module):
     def __init__(
             self,
