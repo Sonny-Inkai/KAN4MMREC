@@ -16,9 +16,6 @@ class KAN4MMREC(GeneralRecommender):
         self.cl_weight = config['cl_weight']
         self.dropout = config['dropout']
 
-        self.n_users = self.n_users  # From GeneralRecommender
-        self.n_items = self.n_items  # From GeneralRecommender
-
         # User, item (ID-based), image, and text embeddings
         self.user_embedding = nn.Embedding(self.n_users, self.embedding_size)
         nn.init.xavier_uniform_(self.user_embedding.weight)
@@ -40,24 +37,32 @@ class KAN4MMREC(GeneralRecommender):
             self.text_embedding = nn.Embedding(self.n_items, self.embedding_size)
             nn.init.xavier_uniform_(self.text_embedding.weight)
 
-        # KANsiglip Transformers for image and text features
-        self.kan_siglip_image = KANsiglip(self.embedding_size, self.n_layers, dropout=self.dropout)  # For user-image interactions
-        self.kan_siglip_text = KANsiglip(self.embedding_size, self.n_layers, dropout=self.dropout)   # For user-text interactions
+        # KANTransformer for image and text features
+        self.kan_user = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout) # For users 
+        self.kan_image = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)  # For image interactions
+        self.kan_text = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)   # For text interactions
+
+        self.faster_kan = FasterKAN(layers_hidden=[self.embedding_size, self.embedding_size])
 
     def forward(self):
         # Transform embeddings
         image_embedding_transformed = self.image_trs(self.image_embedding.weight)
         text_embedding_transformed = self.text_trs(self.text_embedding.weight)
         
-        # Combine user embedding with image and text embeddings
-        u_i = torch.matmul(self.user_embedding.weight, image_embedding_transformed.T)  # Shape: [num_users, num_items]
-        u_t = torch.matmul(self.user_embedding.weight, text_embedding_transformed.T)  # Shape: [num_users, num_items]
-
         # Pass through the rational KAN-based transformer layers
-        u_i_transformed = self.kan_siglip_image(u_i)  # [num_users, num_items]
-        u_t_transformed = self.kan_siglip_text(u_t)  # [num_users, num_items]
+        u_transformed = self.kan_user(self.user_embedding.weight) # [num_users, emb_size]
+        i_transformed = self.kan_image(image_embedding_transformed)  # [num_users, num_items]
+        t_transformed = self.kan_text(text_embedding_transformed)  # [num_users, num_items]
+                
+        # Combine user embedding with image and text embeddings
+        u_i = torch.matmul(u_transformed, i_transformed.T)  # Shape: [num_users, num_items]
+        u_t = torch.matmul(u_transformed, t_transformed.T)  # Shape: [num_users, num_items]
 
-        return u_i_transformed, u_t_transformed
+        # FasterKan for transformation u_i, u_t
+        u_i = self.faster_kan(u_i)
+        u_t = self.faster_kan(u_t)
+
+        return u_i, u_t
 
     def calculate_loss(self, interaction):
         """
@@ -70,11 +75,11 @@ class KAN4MMREC(GeneralRecommender):
             Total loss for training.
         """
         # Predict interaction scores for u_i and u_t
-        u_i_transformed, u_t_transformed = self.forward()
+        u_i, u_t = self.forward()
 
         # Normalized features
-        u_i_transformed = u_i_transformed / u_i_transformed.norm(p=2, dim=-1, keepdim=True)
-        u_t_transformed = u_t_transformed / u_t_transformed.norm(p=2, dim=-1, keepdim=True)
+        u_i_transformed = u_i / u_i.norm(p=2, dim=-1, keepdim=True)
+        u_t_transformed = u_t / u_t.norm(p=2, dim=-1, keepdim=True)
 
         # Cosine similarity as logits
         logits_u_i = torch.matmul(u_i_transformed, u_i_transformed.t())  # Shape: [num_users, num_users]
@@ -92,7 +97,7 @@ class KAN4MMREC(GeneralRecommender):
 
         # Interaction-based loss component
         users = interaction[0]  # Batch of users
-        items = interaction[1]  # Corresponding items that users interacted with
+        items = interaction[1]  # Corresponding items that users interacted with (positive items)
 
         # Get the interaction scores for these user-item pairs from both image and text transformations
         interaction_u_i_scores = u_i_transformed[users, items]  # Shape: [batch_size]
@@ -123,24 +128,24 @@ class KAN4MMREC(GeneralRecommender):
             score_mat_ui: Predicted scores for all items.
         """
         user = interaction[0]
-        user_image_transformed, user_text_transformed = self.forward()
+        u_i, u_t = self.forward()
 
         # Get the scores for the given user
-        user_image_scores = user_image_transformed[user]  # Shape: [num_items]
-        user_text_scores = user_text_transformed[user]  # Shape: [num_items]
+        user_image_scores = u_i[user]  # Shape: [num_items]
+        user_text_scores = u_t[user]  # Shape: [num_items]
 
         # Average the scores from image and text models
-        score_mat_ui = (user_image_scores + user_text_scores) / 2  # Shape: [num_items]
+        score_mat_ui = (user_image_scores + user_text_scores)/2  # Shape: [num_items]
 
         return score_mat_ui
 
-class KANsiglip(nn.Module):
+class KANTransformer(nn.Module):
     """
     KANsiglip class that functions as a transformer-like module with KAN rational activation,
     similar to the image encoder in the SIGLIP model, but enhanced with advanced rational units.
     """
     def __init__(self, embedding_size, n_layers, dropout=0.5):
-        super(KANsiglip, self).__init__()
+        super(KANTransformer, self).__init__()
         self.embedding_size = embedding_size
         self.n_layers = n_layers
 
@@ -164,7 +169,7 @@ class KANsiglip(nn.Module):
             x = layer(x)
         return x
     
-class Attention(nn.Module):
+class KANAttention(nn.Module):
     def __init__(
             self,
             dim: int,
@@ -212,7 +217,7 @@ class Attention(nn.Module):
         x = self.proj_drop(x)
         return x
     
-class LayerScale(nn.Module):
+class KANLayerScale(nn.Module):
     def __init__(
             self,
             dim: int,
@@ -230,7 +235,7 @@ class KANLayer(nn.Module):
     def __init__(self, embedding_size, dropout=0.2):
         super(KANLayer, self).__init__()
         # Use the advanced Attention from katransformer.py
-        self.attention = Attention(dim=embedding_size, num_heads=8, qkv_bias=True, attn_drop=dropout, proj_drop=dropout)
+        self.attention = KANAttention(dim=embedding_size, num_heads=8, qkv_bias=True, attn_drop=dropout, proj_drop=dropout)
         self.norm1 = nn.LayerNorm(embedding_size)
         self.norm2 = nn.LayerNorm(embedding_size)
 
@@ -239,7 +244,7 @@ class KANLayer(nn.Module):
 
         # Stochastic depth and dropout
         self.drop_path = nn.Identity() if dropout == 0 else nn.Dropout(dropout)
-        self.layer_scale = LayerScale(dim=embedding_size, init_values=1e-5)  # Layer scaling to stabilize training
+        self.layer_scale = KANLayerScale(dim=embedding_size, init_values=1e-5)  # Layer scaling to stabilize training
 
     def forward(self, x):
         # Apply attention
