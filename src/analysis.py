@@ -5,7 +5,7 @@ import os
 from tqdm import tqdm
 
 all_data = ''
-for d in ['baby', 'clothing', 'elec', 'sport']:
+for d in ['mmrec-baby-dataset']:
     log_files = glob.glob(f'./log/*{d}*.log')
     data_test = {}
     data_val = {}

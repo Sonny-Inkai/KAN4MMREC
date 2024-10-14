@@ -16,26 +16,36 @@ import platform
 import os
 import torch
 
-
 def quick_start(model, dataset, config_dict, save_model=True, mg=False):
     # merge config dict
     config = Config(model, dataset, config_dict, mg)
     init_logger(config, mg)
     logger = getLogger()
-    # print config infor
+    # print config information
     logger.info('██Server: \t' + platform.node())
     logger.info('██Dir: \t' + os.getcwd() + '\n')
     logger.info(config)
+    
+    # Print config to console
+    print('Server:', platform.node())
+    print('Current Directory:', os.getcwd())
+    print('Config:', config)
 
     # load data
     dataset = RecDataset(config)
     # print dataset statistics
     logger.info(str(dataset))
+    print('Dataset Statistics:', str(dataset))
 
     train_dataset, valid_dataset, test_dataset = dataset.split()
     logger.info('\n====Training====\n' + str(train_dataset))
     logger.info('\n====Validation====\n' + str(valid_dataset))
     logger.info('\n====Testing====\n' + str(test_dataset))
+    
+    # Print dataset split info
+    print('\n====Training Dataset====\n', str(train_dataset))
+    print('\n====Validation Dataset====\n', str(valid_dataset))
+    print('\n====Testing Dataset====\n', str(test_dataset))
 
     # wrap into dataloader
     train_data = TrainDataLoader(config, train_dataset, batch_size=config['train_batch_size'], shuffle=True)
@@ -43,13 +53,14 @@ def quick_start(model, dataset, config_dict, save_model=True, mg=False):
         EvalDataLoader(config, valid_dataset, additional_dataset=train_dataset, batch_size=config['eval_batch_size']),
         EvalDataLoader(config, test_dataset, additional_dataset=train_dataset, batch_size=config['eval_batch_size']))
 
-    ############ Dataset loadded, run model
+    ############ Dataset loaded, run model
     hyper_ret = []
     val_metric = config['valid_metric'].lower()
     best_test_value = 0.0
     idx = best_test_idx = 0
 
     logger.info('\n\n=================================\n\n')
+    print('\n=================================\n')
 
     # hyper-parameters
     hyper_ls = []
@@ -68,12 +79,15 @@ def quick_start(model, dataset, config_dict, save_model=True, mg=False):
 
         logger.info('========={}/{}: Parameters:{}={}======='.format(
             idx+1, total_loops, config['hyper_parameters'], hyper_tuple))
+        print('========={}/{}: Parameters:{}={}======='.format(
+            idx+1, total_loops, config['hyper_parameters'], hyper_tuple))
 
         # set random state of dataloader
         train_data.pretrain_setup()
         # model loading and initialization
         model = get_model(config['model'])(config, train_data).to(config['device'])
         logger.info(model)
+        print('Model Initialized:', model)
 
         # trainer loading and initialization
         trainer = get_trainer()(config, model, mg)
@@ -94,19 +108,31 @@ def quick_start(model, dataset, config_dict, save_model=True, mg=False):
         logger.info('████Current BEST████:\nParameters: {}={},\n'
                     'Valid: {},\nTest: {}\n\n\n'.format(config['hyper_parameters'],
             hyper_ret[best_test_idx][0], dict2str(hyper_ret[best_test_idx][1]), dict2str(hyper_ret[best_test_idx][2])))
+        
+        # Print validation and test results
+        print('Best Validation Result:', dict2str(best_valid_result))
+        print('Test Result:', dict2str(best_test_upon_valid))
+        print('Current Best:\nParameters: {}={},\nValid: {},\nTest: {}\n'.format(
+            config['hyper_parameters'], hyper_ret[best_test_idx][0], dict2str(hyper_ret[best_test_idx][1]), dict2str(hyper_ret[best_test_idx][2])))
 
     # log info
     logger.info('\n============All Over=====================')
+    print('\n============All Over=====================')
     for (p, k, v) in hyper_ret:
         logger.info('Parameters: {}={},\n best valid: {},\n best test: {}'.format(config['hyper_parameters'],
                                                                                   p, dict2str(k), dict2str(v)))
+        print('Parameters: {}={},\n best valid: {},\n best test: {}'.format(config['hyper_parameters'], p, dict2str(k), dict2str(v)))
 
     logger.info('\n\n█████████████ BEST ████████████████')
     logger.info('\tParameters: {}={},\nValid: {},\nTest: {}\n\n'.format(config['hyper_parameters'],
                                                                    hyper_ret[best_test_idx][0],
                                                                    dict2str(hyper_ret[best_test_idx][1]),
                                                                    dict2str(hyper_ret[best_test_idx][2])))
-
+    print('\n\n█████████████ BEST ████████████████')
+    print('\tParameters: {}={},\nValid: {},\nTest: {}\n'.format(config['hyper_parameters'],
+                                                                   hyper_ret[best_test_idx][0],
+                                                                   dict2str(hyper_ret[best_test_idx][1]),
+                                                                   dict2str(hyper_ret[best_test_idx][2])))
 
 def quick_eval(model, dataset, config_dict, resume=None, metric=['recall@5', 'precision@5',	'map@5', 'ndcg@5']):
     # merge config dict
