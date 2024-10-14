@@ -56,10 +56,6 @@ class KAN4MMREC(GeneralRecommender):
         u_i = torch.matmul(u_transformed, i_transformed.T)  # Shape: [num_users, num_items]
         u_t = torch.matmul(u_transformed, t_transformed.T)  # Shape: [num_users, num_items]
 
-        # FasterKan for transformation u_i, u_t
-        u_i = self.faster_kan(u_i)
-        u_t = self.faster_kan(u_t)
-
         return u_i, u_t
 
     def calculate_loss(self, interaction):
