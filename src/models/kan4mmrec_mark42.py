@@ -42,6 +42,8 @@ class KAN4MMREC(GeneralRecommender):
         self.kan_image = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)  # For image interactions
         self.kan_text = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)   # For text interactions
 
+        self.faster_kan = FasterKAN(layers_hidden=[self.embedding_size, self.embedding_size])
+
     def forward(self):
         # Transform embeddings
         image_embedding_transformed = self.image_trs(self.image_embedding.weight)
@@ -153,20 +155,67 @@ class KANTransformer(nn.Module):
             for _ in range(n_layers)
         ])
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x):
         """
         Forward pass for KANsiglip.
 
         Args:
-            x: Input tensor of shape [seq_len, embedding_size].
+            x: Input tensor of shape [num_users, num_items].
 
         Returns:
-            Transformed tensor of shape [seq_len, num_items].
+            Transformed tensor of shape [num_users, num_items].
         """
         for layer in self.layers:
             x = layer(x)
         return x
 
+class KANAttention(nn.Module):
+    def __init__(
+            self,
+            dim: int,
+            num_heads: int = 8,
+            qkv_bias: bool = False,
+            qk_norm: bool = False,
+            attn_drop: float = 0.,
+            proj_drop: float = 0.,
+            norm_layer: nn.Module = nn.LayerNorm,
+    ) -> None:
+        super().__init__()
+        assert dim % num_heads == 0, 'dim should be divisible by num_heads'
+        self.num_heads = num_heads
+        self.head_dim = dim // num_heads
+        self.scale = self.head_dim ** -0.5
+        self.fused_attn = use_fused_attn()
+
+        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
+        self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.k_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
+        self.attn_drop = nn.Dropout(attn_drop)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        N, C = x.shape  # Since input shape [seq_length, emb_size]
+        qkv = self.qkv(x).reshape(N, 3, self.num_heads, self.head_dim).permute(1, 2, 0, 3)
+        q, k, v = qkv.unbind(0)
+        q, k = self.q_norm(q), self.k_norm(k)
+
+        if self.fused_attn:
+            x = F.scaled_dot_product_attention(
+                q, k, v,
+                dropout_p=self.attn_drop.p if self.training else 0.,
+            )
+        else:
+            q = q * self.scale
+            attn = q @ k.transpose(-2, -1)
+            attn = attn.softmax(dim=-1)
+            attn = self.attn_drop(attn)
+            x = attn @ v
+
+        x = x.transpose(0, 1).reshape(N, C)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
 class KANLayerScale(nn.Module):
     def __init__(
             self,
@@ -185,25 +234,23 @@ class KANLayer(nn.Module):
     def __init__(self, embedding_size, dropout=0.2):
         super(KANLayer, self).__init__()
         # Use the advanced Attention from katransformer.py
+        self.attention = KANAttention(dim=embedding_size, num_heads=8, qkv_bias=True, attn_drop=dropout, proj_drop=dropout)
         self.norm1 = nn.LayerNorm(embedding_size)
         self.norm2 = nn.LayerNorm(embedding_size)
 
         # Use the FasterKAN rational MLP
-        self.FasterKAN = FasterKAN(layers_hidden=[embedding_size, embedding_size])
+        self.mlp = FasterKAN(layers_hidden=[embedding_size, embedding_size])
 
         # Stochastic depth and dropout
         self.drop_path = nn.Identity() if dropout == 0 else nn.Dropout(dropout)
         self.layer_scale = KANLayerScale(dim=embedding_size, init_values=1e-5)  # Layer scaling to stabilize training
 
-    def forward(self, hidden_states: torch.Tensor):
+    def forward(self, x):
         # Apply attention
-        residual = hidden_states
-        hidden_states = self.norm1(hidden_states)
-        hidden_states = self.drop_path(self.layer_scale(hidden_states))
+        x_attn = self.attention(self.norm1(x))
+        x = x + self.drop_path(self.layer_scale(x_attn))
 
-        hidden_states = hidden_states + residual
-        residual = hidden_states
-        # Apply FasterKAN
-        hidden_states = self.FasterKAN(self.norm2(hidden_states))
-        hidden_states = residual + self.drop_path(self.layer_scale(hidden_states))
-        return hidden_states
+        # Apply rational MLP
+        x_mlp = self.mlp(self.norm2(x))
+        x = x + self.drop_path(self.layer_scale(x_mlp))
+        return x
