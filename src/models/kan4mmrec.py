@@ -12,7 +12,6 @@ class KAN4MMREC(GeneralRecommender):
         # Load configuration and dataset parameters
         self.embedding_size = config['embedding_size']
         self.n_layers = config['n_layers']
-        self.reg_weight = config['reg_weight']
         self.cl_weight = config['cl_weight']
         self.dropout = config['dropout']
 
@@ -90,25 +89,25 @@ class KAN4MMREC(GeneralRecommender):
         nll_u_t = -torch.sum(loglik_u_t, dim=-1).mean()
 
         # Interaction-based loss component
-        users = interaction[0]  # Batch of users
-        items = interaction[1]  # Corresponding items that users interacted with (positive items)
+        users = interaction[0]  # Corresponding items that users interacted with (positive items)
+        masked_items = interaction[1]
+        neg_items = interaction[2]  # Negative sampled items
+
+        u_i_transformed = u_i_transformed[users]
+        u_t_transformed = u_t_transformed[users]
 
         # Get the interaction scores for these user-item pairs from both image and text transformations
-        interaction_u_i_scores = u_i_transformed[users, items]  # Shape: [batch_size]
-        interaction_u_t_scores = u_t_transformed[users, items]  # Shape: [batch_size]
+        interaction_u_i_scores_pos = u_i_transformed[masked_items[0], masked_items[1]]  # Shape: [batch_size]
+        interaction_u_t_scores_pos = u_t_transformed[masked_items[0], masked_items[1]]  # Shape: [batch_size]
+        interaction_u_i_scores_neg = u_i_transformed[masked_items[0], neg_items]  # Shape: [batch_size, num_neg_samples]
+        interaction_u_t_scores_neg = u_t_transformed[masked_items[0], neg_items]  # Shape: [batch_size, num_neg_samples]
 
-        # Labels for these interactions are all 1 (since they are positive samples)
-        labels = torch.ones_like(interaction_u_i_scores, device=u_i_transformed.device)
-
-        # Binary Cross-Entropy loss for interaction predictions
-        interaction_loss_u_i = torch.nn.functional.binary_cross_entropy_with_logits(interaction_u_i_scores, labels)
-        interaction_loss_u_t = torch.nn.functional.binary_cross_entropy_with_logits(interaction_u_t_scores, labels)
-
-        # Regularization term
-        reg_term = self.reg_weight * (self.user_embedding.weight.norm() + self.image_embedding.weight.norm() + self.text_embedding.weight.norm())
+        # BPR Loss for interaction predictions
+        bpr_loss_u_i = -torch.mean(torch.log2(torch.sigmoid(interaction_u_i_scores_pos - interaction_u_i_scores_neg).sum(dim=-1)))
+        bpr_loss_u_t = -torch.mean(torch.log2(torch.sigmoid(interaction_u_t_scores_pos - interaction_u_t_scores_neg).sum(dim=-1)))
 
         # Average loss for transformed u_i and u_t, including interaction loss
-        loss = (nll_u_i + nll_u_t).mean() + (interaction_loss_u_i + interaction_loss_u_t).mean() + reg_term + self.cl_weight
+        loss = (nll_u_i + nll_u_t).mean() + (bpr_loss_u_i + bpr_loss_u_t) + self.cl_weight
         return loss
 
     def full_sort_predict(self, interaction):
@@ -132,7 +131,6 @@ class KAN4MMREC(GeneralRecommender):
         score_mat_ui = (user_image_scores + user_text_scores)/2  # Shape: [num_items]
 
         return score_mat_ui
-
 class KANTransformer(nn.Module):
     """
     KANsiglip class that functions as a transformer-like module with KAN rational activation,
@@ -194,8 +192,7 @@ class KANLayer(nn.Module):
     def forward(self, hidden_states: torch.Tensor):
         # Apply attention
         residual = hidden_states
-        hidden_states = self.norm1(hidden_states)
-        hidden_states = self.drop_path(self.layer_scale(hidden_states))
+        hidden_states = self.drop_path(self.layer_scale(self.norm1(hidden_states)))
 
         hidden_states = hidden_states + residual
         residual = hidden_states
