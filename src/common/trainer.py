@@ -161,6 +161,7 @@ class Trainer(AbstractTrainer):
                 total_loss = losses.item() if total_loss is None else total_loss + losses.item()
             if self._check_nan(loss):
                 self.logger.info('Loss is nan at epoch: {}, batch index: {}. Exiting.'.format(epoch_idx, batch_idx))
+                print(f'Loss is nan at epoch: {epoch_idx}, batch index: {batch_idx}. Exiting.')
                 return loss, torch.tensor(0.0)
             
             if self.mg and batch_idx % self.beta == 0:
@@ -178,6 +179,7 @@ class Trainer(AbstractTrainer):
                     
                 if self._check_nan(loss):
                     self.logger.info('Loss is nan at epoch: {}, batch index: {}. Exiting.'.format(epoch_idx, batch_idx))
+                    print(f'Loss is nan at epoch: {epoch_idx}, batch index: {batch_idx}. Exiting.')
                     return loss, torch.tensor(0.0)
                 second_loss = -1 * self.alpha2 * loss
                 second_loss.backward()
@@ -188,9 +190,9 @@ class Trainer(AbstractTrainer):
                 clip_grad_norm_(self.model.parameters(), **self.clip_grad_norm)
             self.optimizer.step()
             loss_batches.append(loss.detach())
-            # for test
-            #if batch_idx == 0:
-            #    break
+
+            # Print batch loss
+            print(f'Epoch: {epoch_idx}, Batch: {batch_idx}, Loss: {loss.item()}')
         return total_loss, loss_batches
 
     def _valid_epoch(self, valid_data):
@@ -205,6 +207,8 @@ class Trainer(AbstractTrainer):
         """
         valid_result = self.evaluate(valid_data)
         valid_score = valid_result[self.valid_metric] if self.valid_metric else valid_result['NDCG@20']
+        print(f'Validation Score: {valid_score}')  # Print validation score
+        print(f'Validation Result: {dict2str(valid_result)}')  # Print validation results
         return valid_score, valid_result
 
     def _check_nan(self, loss):
@@ -253,8 +257,10 @@ class Trainer(AbstractTrainer):
             post_info = self.model.post_epoch_processing()
             if verbose:
                 self.logger.info(train_loss_output)
+                print(train_loss_output)  # Print training loss output
                 if post_info is not None:
                     self.logger.info(post_info)
+                    print(post_info)  # Print post-epoch information
 
             # eval: To ensure the test result is the best model under validation data, set self.eval_step == 1
             if (epoch_idx + 1) % self.eval_step == 0:
@@ -271,12 +277,16 @@ class Trainer(AbstractTrainer):
                 _, test_result = self._valid_epoch(test_data)
                 if verbose:
                     self.logger.info(valid_score_output)
+                    print(valid_score_output)  # Print validation score output
                     self.logger.info(valid_result_output)
+                    print(valid_result_output)  # Print validation result output
                     self.logger.info('test result: \n' + dict2str(test_result))
+                    print('Test result: \n' + dict2str(test_result))  # Print test result
                 if update_flag:
                     update_output = '██ ' + self.config['model'] + '--Best validation results updated!!!'
                     if verbose:
                         self.logger.info(update_output)
+                        print(update_output)  # Print update output
                     self.best_valid_result = valid_result
                     self.best_test_upon_valid = test_result
 
@@ -285,6 +295,7 @@ class Trainer(AbstractTrainer):
                                   (epoch_idx - self.cur_step * self.eval_step)
                     if verbose:
                         self.logger.info(stop_output)
+                        print(stop_output)  # Print stop output
                     break
         return self.best_valid_score, self.best_valid_result, self.best_test_upon_valid
 
@@ -308,7 +319,9 @@ class Trainer(AbstractTrainer):
             # rank and get top-k
             _, topk_index = torch.topk(scores, max(self.config['topk']), dim=-1)  # nusers x topk
             batch_matrix_list.append(topk_index)
-        return self.evaluator.evaluate(batch_matrix_list, eval_data, is_test=is_test, idx=idx)
+        eval_result = self.evaluator.evaluate(batch_matrix_list, eval_data, is_test=is_test, idx=idx)
+        print(f'Evaluation Result: {dict2str(eval_result)}')  # Print evaluation result
+        return eval_result
 
     def plot_train_loss(self, show=True, save_path=None):
         r"""Plot the train loss in each epoch
@@ -329,4 +342,3 @@ class Trainer(AbstractTrainer):
             plt.show()
         if save_path:
             plt.savefig(save_path)
-
