@@ -92,6 +92,10 @@ class KAN4MMREC(GeneralRecommender):
         users = interaction[0]  # Corresponding items that users interacted with (positive items)
         masked_items = interaction[1]
         neg_items = interaction[2]  # Negative sampled items
+        # Debug prints for users, masked_items, and neg_items
+        print("Users: ", users, "Shape: ", users.shape)
+        print("Masked Items: ", masked_items, "Shape: ", masked_items.shape)
+        print("Negative Items: ", neg_items, "Shape: ", neg_items.shape)
 
         u_i_transformed = u_i_transformed[users]
         u_t_transformed = u_t_transformed[users]
