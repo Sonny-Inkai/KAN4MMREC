@@ -90,21 +90,18 @@ class KAN4MMREC(GeneralRecommender):
 
         # Interaction-based loss component
         users = interaction[0]  # Corresponding items that users interacted with (positive items)
-        masked_items = interaction[1]
+        pos_items = interaction[1] # Positive items
         neg_items = interaction[2]  # Negative sampled items
-        # Debug prints for users, masked_items, and neg_items
-        print("Users: ", users, "Shape: ", users.shape)
-        print("Masked Items: ", masked_items, "Shape: ", masked_items.shape)
-        print("Negative Items: ", neg_items, "Shape: ", neg_items.shape)
+
 
         u_i_transformed = u_i_transformed[users]
         u_t_transformed = u_t_transformed[users]
 
         # Get the interaction scores for these user-item pairs from both image and text transformations
-        interaction_u_i_scores_pos = u_i_transformed[masked_items[0], masked_items[1]]  # Shape: [batch_size]
-        interaction_u_t_scores_pos = u_t_transformed[masked_items[0], masked_items[1]]  # Shape: [batch_size]
-        interaction_u_i_scores_neg = u_i_transformed[masked_items[0], neg_items]  # Shape: [batch_size, num_neg_samples]
-        interaction_u_t_scores_neg = u_t_transformed[masked_items[0], neg_items]  # Shape: [batch_size, num_neg_samples]
+        interaction_u_i_scores_pos = u_i_transformed[users, pos_items]  # Shape: [batch_size]
+        interaction_u_t_scores_pos = u_t_transformed[users, pos_items]  # Shape: [batch_size]
+        interaction_u_i_scores_neg = u_i_transformed[users, neg_items]  # Shape: [batch_size, num_neg_samples]
+        interaction_u_t_scores_neg = u_t_transformed[users, neg_items]  # Shape: [batch_size, num_neg_samples]
 
         # BPR Loss for interaction predictions
         bpr_loss_u_i = -torch.mean(torch.log2(torch.sigmoid(interaction_u_i_scores_pos - interaction_u_i_scores_neg).sum(dim=-1)))
@@ -124,12 +121,12 @@ class KAN4MMREC(GeneralRecommender):
         Returns:
             score_mat_ui: Predicted scores for all items.
         """
-        user = interaction[0]
+        users = interaction[0]
         u_i, u_t = self.forward()
 
         # Get the scores for the given user
-        user_image_scores = u_i[user]  # Shape: [num_items]
-        user_text_scores = u_t[user]  # Shape: [num_items]
+        user_image_scores = u_i[users]  # Shape: [num_items]
+        user_text_scores = u_t[users]  # Shape: [num_items]
 
         # Average the scores from image and text models
         score_mat_ui = (user_image_scores + user_text_scores)/2  # Shape: [num_items]
