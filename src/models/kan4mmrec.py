@@ -99,9 +99,13 @@ class KAN4MMREC(GeneralRecommender):
 
         # Get the interaction scores for these user-item pairs from both image and text transformations
         interaction_u_i_scores_pos = u_i_transformed[users, pos_items]  # Shape: [batch_size]
+        print(interaction_u_i_scores_pos.shape)
         interaction_u_t_scores_pos = u_t_transformed[users, pos_items]  # Shape: [batch_size]
+        print(interaction_u_t_scores_pos.shape)
         interaction_u_i_scores_neg = u_i_transformed[users, neg_items]  # Shape: [batch_size, num_neg_samples]
+        print(interaction_u_i_scores_neg)
         interaction_u_t_scores_neg = u_t_transformed[users, neg_items]  # Shape: [batch_size, num_neg_samples]
+        print(interaction_u_t_scores_neg)
 
         # BPR Loss for interaction predictions
         bpr_loss_u_i = -torch.mean(torch.log2(torch.sigmoid(interaction_u_i_scores_pos - interaction_u_i_scores_neg).sum(dim=-1)))
