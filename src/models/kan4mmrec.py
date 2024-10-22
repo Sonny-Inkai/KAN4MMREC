@@ -87,6 +87,8 @@ class KAN4MMREC(GeneralRecommender):
         # Negative Log Likelihood (NLL) loss for both transformed matrices
         nll_u_i = -torch.sum(loglik_u_i, dim=-1).mean()
         nll_u_t = -torch.sum(loglik_u_t, dim=-1).mean()
+        print("NLL Loss for u_i:", nll_u_i.item())
+        print("NLL Loss for u_t:", nll_u_t.item())  
 
         # Interaction-based loss component
         users = interaction[0]  # Corresponding items that users interacted with (positive items)
@@ -111,8 +113,11 @@ class KAN4MMREC(GeneralRecommender):
         bpr_loss_u_i = -torch.mean(torch.log2(torch.sigmoid(interaction_u_i_scores_pos - interaction_u_i_scores_neg).sum(dim=-1)))
         bpr_loss_u_t = -torch.mean(torch.log2(torch.sigmoid(interaction_u_t_scores_pos - interaction_u_t_scores_neg).sum(dim=-1)))
 
+        print("BPR Loss for u_i:", bpr_loss_u_i.item())
+        print("BPR Loss for u_t:", bpr_loss_u_t.item())
         # Average loss for transformed u_i and u_t, including interaction loss
         loss = (nll_u_i + nll_u_t).mean() + (bpr_loss_u_i + bpr_loss_u_t) + self.cl_weight
+        print("Total Loss:", loss.item())
         return loss
 
     def full_sort_predict(self, interaction):
