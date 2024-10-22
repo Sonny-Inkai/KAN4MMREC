@@ -93,10 +93,6 @@ class KAN4MMREC(GeneralRecommender):
         pos_items = interaction[1] # Positive items
         neg_items = interaction[2]  # Negative sampled items
 
-
-        u_i_transformed = u_i_transformed[users]
-        u_t_transformed = u_t_transformed[users]
-
         # Get the interaction scores for these user-item pairs from both image and text transformations
         interaction_u_i_scores_pos = u_i_transformed[users, pos_items]  # Shape: [batch_size]
         print("Shape of interaction_u_i_scores_pos:", interaction_u_i_scores_pos.shape)
