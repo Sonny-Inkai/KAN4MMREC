@@ -56,10 +56,10 @@ class KAN4MMREC(GeneralRecommender):
                 
         # Combine user embedding with image and text embeddings
         u_i = torch.matmul(u_transformed, i_transformed.T)  # Shape: [num_users, num_items]
-        u_i = self.FasterKAN(self.norm(u_i))
+        u_i = self.FasterKAN(u_i)
 
         u_t = torch.matmul(u_transformed, t_transformed.T)  # Shape: [num_users, num_items]
-        u_t = self.FasterKAN(self.norm(u_t))
+        u_t = self.FasterKAN(u_t)
 
         return u_i, u_t
 
