@@ -41,7 +41,7 @@ class KAN4MMREC(GeneralRecommender):
         self.kan_image = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)  # For image interactions
         self.kan_text = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)   # For text interactions
 
-        self.FasterKAN = FasterKAN(layers_hidden=[self.t_feat.shape[1], self.t_feat.shape[1]])
+        self.FasterKAN = FasterKAN(layers_hidden=[self.t_feat.shape[0], self.t_feat.shape[0]])
 
     def forward(self):
         # Transform embeddings
