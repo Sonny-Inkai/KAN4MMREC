@@ -41,6 +41,9 @@ class KAN4MMREC(GeneralRecommender):
         self.kan_image = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)  # For image interactions
         self.kan_text = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)   # For text interactions
 
+        self.norm = nn.LayerNorm(self.embedding_size)
+        self.FasterKAN = FasterKAN(layers_hidden=[self.embedding_size, self.embedding_size])
+
     def forward(self):
         # Transform embeddings
         image_embedding_transformed = self.image_trs(self.image_embedding.weight)
@@ -53,7 +56,10 @@ class KAN4MMREC(GeneralRecommender):
                 
         # Combine user embedding with image and text embeddings
         u_i = torch.matmul(u_transformed, i_transformed.T)  # Shape: [num_users, num_items]
+        u_i = self.FasterKAN(self.norm(u_i))
+
         u_t = torch.matmul(u_transformed, t_transformed.T)  # Shape: [num_users, num_items]
+        u_t = self.FasterKAN(self.norm(u_t))
 
         return u_i, u_t
 
@@ -81,26 +87,26 @@ class KAN4MMREC(GeneralRecommender):
 
         # Get the interaction scores for these user-item pairs from both image and text transformations
         interaction_u_i_scores_pos = u_i_transformed[users, pos_items]  # Shape: [batch_size]
-        print("Shape of interaction_u_i_scores_pos:", interaction_u_i_scores_pos.shape)
 
         interaction_u_t_scores_pos = u_t_transformed[users, pos_items]  # Shape: [batch_size]
-        print("Shape of interaction_u_t_scores_pos:", interaction_u_t_scores_pos.shape)
 
         interaction_u_i_scores_neg = u_i_transformed[users, neg_items]  # Shape: [batch_size, num_neg_samples]
-        print("Shape of interaction_u_i_scores_neg:", interaction_u_i_scores_neg.shape)
 
         interaction_u_t_scores_neg = u_t_transformed[users, neg_items]  # Shape: [batch_size, num_neg_samples]
-        print("Shape of interaction_u_t_scores_neg:", interaction_u_t_scores_neg.shape)
-
 
         # BPR Loss for interaction predictions
         bpr_loss_u_i = -torch.mean(torch.log2(torch.sigmoid(interaction_u_i_scores_pos - interaction_u_i_scores_neg).sum(dim=-1)))
         bpr_loss_u_t = -torch.mean(torch.log2(torch.sigmoid(interaction_u_t_scores_pos - interaction_u_t_scores_neg).sum(dim=-1)))
 
+        bpr_loss_i_t = -torch.mean(torch.log2(torch.sigmoid(interaction_u_i_scores_pos-interaction_u_t_scores_neg).sum(dim=-1)))
+        bpr_loss_t_i = -torch.mean(torch.log2(torch.sigmoid(interaction_u_t_scores_pos-interaction_u_i_scores_neg).sum(dim=-1)))
+
         print("BPR Loss for u_i:", bpr_loss_u_i.item())
         print("BPR Loss for u_t:", bpr_loss_u_t.item())
+        print("BPR loss for image and text:", bpr_loss_i_t)
+        print("BPR loss for text and image:", bpr_loss_t_i)
         # Average loss for transformed u_i and u_t, including interaction loss
-        loss = (bpr_loss_u_i + bpr_loss_u_t).mean() + self.cl_weight
+        loss = (bpr_loss_u_i + bpr_loss_u_t).mean() + (bpr_loss_i_t + bpr_loss_t_i).mean() + self.cl_weight
         print("Total Loss:", loss.item())
         return loss
 
