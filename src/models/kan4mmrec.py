@@ -74,22 +74,6 @@ class KAN4MMREC(GeneralRecommender):
         u_i_transformed = u_i / u_i.norm(p=2, dim=-1, keepdim=True)
         u_t_transformed = u_t / u_t.norm(p=2, dim=-1, keepdim=True)
 
-        # Cosine similarity as logits
-        logits_u_i = torch.matmul(u_i_transformed, u_i_transformed.t())  # Shape: [num_users, num_users]
-        logits_u_t = torch.matmul(u_t_transformed, u_t_transformed.t())  # Shape: [num_users, num_users]
-
-        # Labels for SIGLIP-like contrastive loss
-        eye = torch.eye(logits_u_i.size(0), device=logits_u_i.device)
-        m1_diag1 = -torch.ones_like(logits_u_i) + 2 * eye
-        loglik_u_i = torch.nn.functional.logsigmoid(m1_diag1 * logits_u_i)
-        loglik_u_t = torch.nn.functional.logsigmoid(m1_diag1 * logits_u_t)
-
-        # Negative Log Likelihood (NLL) loss for both transformed matrices
-        nll_u_i = -torch.sum(loglik_u_i, dim=-1).mean()
-        nll_u_t = -torch.sum(loglik_u_t, dim=-1).mean()
-        print("NLL Loss for u_i:", nll_u_i.item())
-        print("NLL Loss for u_t:", nll_u_t.item())  
-
         # Interaction-based loss component
         users = interaction[0]  # Corresponding items that users interacted with (positive items)
         pos_items = interaction[1] # Positive items
@@ -116,7 +100,7 @@ class KAN4MMREC(GeneralRecommender):
         print("BPR Loss for u_i:", bpr_loss_u_i.item())
         print("BPR Loss for u_t:", bpr_loss_u_t.item())
         # Average loss for transformed u_i and u_t, including interaction loss
-        loss = (nll_u_i + nll_u_t).mean() + (bpr_loss_u_i + bpr_loss_u_t) + self.cl_weight
+        loss = (bpr_loss_u_i + bpr_loss_u_t).mean() + self.cl_weight
         print("Total Loss:", loss.item())
         return loss
 
