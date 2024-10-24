@@ -2,10 +2,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from common.abstract_recommender import GeneralRecommender
-from utils.fasterkan import FasterKAN  # Advanced rational transformer-based architecture
+from utils.fasterkan import FasterKAN
 from timm.layers import use_fused_attn
-
-### Apply Fasterkan for all matrix [user, item] -> it is not work because it is too large for gpu in kaggle 
 
 class KAN4MMREC(GeneralRecommender):
     def __init__(self, config, dataset):
@@ -21,7 +19,6 @@ class KAN4MMREC(GeneralRecommender):
         self.user_embedding = nn.Embedding(self.n_users, self.embedding_size)
         nn.init.xavier_uniform_(self.user_embedding.weight)
 
-        # If available, use pretrained image and text embeddings
         if self.v_feat is not None:
             self.image_embedding = nn.Embedding.from_pretrained(self.v_feat, freeze=False)
             self.image_trs = nn.Linear(self.v_feat.shape[1], self.embedding_size)
@@ -38,90 +35,68 @@ class KAN4MMREC(GeneralRecommender):
             self.text_embedding = nn.Embedding(self.n_items, self.embedding_size)
             nn.init.xavier_uniform_(self.text_embedding.weight)
 
-        # KANTransformer for image and text features
-        self.kan_user = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout) # For users 
-        self.kan_image = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)  # For image interactions
-        self.kan_text = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)   # For text interactions
+        # KANTransformer for image and text features with multi-head attention
+        self.kan_user = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)
+        self.kan_image = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)
+        self.kan_text = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)
 
-        self.SplineLinear = SplineLinear(self.n_items, self.n_items)
+        # Use batch normalization and dropout in SplineLinear
+        self.SplineLinear = SplineLinear(self.embedding_size, self.embedding_size)
+        self.batch_norm = nn.BatchNorm1d(self.n_items)
+        self.dropout_layer = nn.Dropout(p=self.dropout)
 
     def forward(self):
         # Transform embeddings
         image_embedding_transformed = self.image_trs(self.image_embedding.weight)
         text_embedding_transformed = self.text_trs(self.text_embedding.weight)
-        
-        # Pass through the rational KAN-based transformer layers
-        u_transformed = self.kan_user(self.user_embedding.weight) # [num_users, emb_size]
-        i_transformed = self.kan_image(image_embedding_transformed)  # [num_users, num_items]
-        t_transformed = self.kan_text(text_embedding_transformed)  # [num_users, num_items]
-                
-        # Combine user embedding with image and text embeddings
-        u_i = torch.matmul(u_transformed, i_transformed.transpose(0,1))  # Shape: [num_users, num_items]
-        u_i = self.SplineLinear(u_i)
 
-        u_t = torch.matmul(u_transformed, t_transformed.transpose(0,1))  # Shape: [num_users, num_items]
-        u_t = self.SplineLinear(u_t)
+        # Pass through the KAN-based transformer layers
+        u_transformed = self.kan_user(self.user_embedding.weight)
+        i_transformed = self.kan_image(image_embedding_transformed)
+        t_transformed = self.kan_text(text_embedding_transformed)
+
+        # Combine user embedding with image and text embeddings
+        u_i = torch.matmul(u_transformed, i_transformed.transpose(0, 1))
+        u_i = self.SplineLinear(self.batch_norm(u_i))  # Adding batch normalization
+        u_i = self.dropout_layer(u_i)
+
+        u_t = torch.matmul(u_transformed, t_transformed.transpose(0, 1))
+        u_t = self.SplineLinear(self.batch_norm(u_t))
+        u_t = self.dropout_layer(u_t)
 
         return u_i, u_t
 
     def calculate_loss(self, interaction):
-        """
-        Calculate the loss using SIGLIP-like approach for user-user , and loss including interaction labels for positive samples.
-
-        Args:
-            interaction: Tuple containing users and items (ground-truth interaction matrix [num_users, num_items]),
-                         where users have interacted with the corresponding items.
-        Returns:
-            Total loss for training.
-        """
-        # Predict interaction scores for u_i and u_t
         u_i, u_t = self.forward()
 
-        # Interaction-based loss component
-        users = interaction[0]  # Corresponding items that users interacted with (positive items)
-        pos_items = interaction[1] # Positive items
-        neg_items = interaction[2]  # Negative sampled items
+        users = interaction[0]
+        pos_items = interaction[1]
+        neg_items = interaction[2]
 
-        # Get the interaction scores for these user-item pairs from both image and text transformations
-        interaction_u_i_scores_pos = u_i[users, pos_items]  # Shape: [batch_size]
+        interaction_u_i_scores_pos = u_i[users, pos_items]
+        interaction_u_t_scores_pos = u_t[users, pos_items]
+        interaction_u_i_scores_neg = u_i[users, neg_items]
+        interaction_u_t_scores_neg = u_t[users, neg_items]
 
-        interaction_u_t_scores_pos = u_t[users, pos_items]  # Shape: [batch_size]
+        bpr_loss_u_i = -torch.mean(torch.log(torch.sigmoid(interaction_u_i_scores_pos - interaction_u_i_scores_neg) + 1e-10))
+        bpr_loss_u_t = -torch.mean(torch.log(torch.sigmoid(interaction_u_t_scores_pos - interaction_u_t_scores_neg) + 1e-10))
 
-        interaction_u_i_scores_neg = u_i[users, neg_items]  # Shape: [batch_size, num_neg_samples]
+        # Include L2 regularization to avoid overfitting
+        l2_reg = 1e-5 * (torch.sum(self.user_embedding.weight ** 2) + torch.sum(self.image_embedding.weight ** 2) + torch.sum(self.text_embedding.weight ** 2))
 
-        interaction_u_t_scores_neg = u_t[users, neg_items]  # Shape: [batch_size, num_neg_samples]
-
-        # BPR Loss for interaction predictions
-        bpr_loss_u_i = -torch.mean(torch.log(torch.sigmoid(interaction_u_i_scores_pos - interaction_u_i_scores_neg)+1e-10))
-        bpr_loss_u_t = -torch.mean(torch.log(torch.sigmoid(interaction_u_t_scores_pos - interaction_u_t_scores_neg)+1e-10))
-
-        print("BPR Loss for u_i:", bpr_loss_u_i.item())
-        print("BPR Loss for u_t:", bpr_loss_u_t.item())
-
-        # Average loss for transformed u_i and u_t, including interaction loss
-        loss = (bpr_loss_u_i + bpr_loss_u_t)/2 + self.cl_weight
-        print("Total Loss:", loss.item())
+        loss = (bpr_loss_u_i + bpr_loss_u_t) / 2 + self.cl_weight + l2_reg
         return loss
 
     def full_sort_predict(self, interaction):
-        """
-        Predict scores for all items for a given user by averaging image and text matrices.
-
-        Args:
-            interaction: User interaction data.
-
-        Returns:
-            score_mat_ui: Predicted scores for all items.
-        """
         users = interaction[0]
         u_i, u_t = self.forward()
 
-        # Get the scores for the given user
-        user_image_scores = u_i[users]  # Shape: [num_items]
-        user_text_scores = u_t[users]  # Shape: [num_items]
+        user_image_scores = u_i[users]
+        user_text_scores = u_t[users]
 
-        # Average the scores from image and text models
-        score_mat_ui = (user_image_scores + user_text_scores)/2  # Shape: [num_items]
+        # Concatenate the scores and transform via linear layer for better alignment
+        combined_scores = torch.cat([user_image_scores, user_text_scores], dim=1)
+        score_mat_ui = self.SplineLinear(combined_scores)
 
         return score_mat_ui
     
