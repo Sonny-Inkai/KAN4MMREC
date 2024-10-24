@@ -92,8 +92,8 @@ class KAN4MMREC(GeneralRecommender):
         interaction_u_t_scores_neg = u_t[users, neg_items]  # Shape: [batch_size, num_neg_samples]
 
         # BPR Loss for interaction predictions
-        bpr_loss_u_i = -torch.mean(torch.log2(torch.sigmoid(interaction_u_i_scores_pos - interaction_u_i_scores_neg).sum(dim=-1)))
-        bpr_loss_u_t = -torch.mean(torch.log2(torch.sigmoid(interaction_u_t_scores_pos - interaction_u_t_scores_neg).sum(dim=-1)))
+        bpr_loss_u_i = -torch.mean(torch.log(torch.sigmoid(interaction_u_i_scores_pos - interaction_u_i_scores_neg)+1e-10))
+        bpr_loss_u_t = -torch.mean(torch.log(torch.sigmoid(interaction_u_t_scores_pos - interaction_u_t_scores_neg)+1e-10))
 
         print("BPR Loss for u_i:", bpr_loss_u_i.item())
         print("BPR Loss for u_t:", bpr_loss_u_t.item())
