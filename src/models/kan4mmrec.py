@@ -95,15 +95,11 @@ class KAN4MMREC(GeneralRecommender):
         bpr_loss_u_i = -torch.mean(torch.log2(torch.sigmoid(interaction_u_i_scores_pos - interaction_u_i_scores_neg).sum(dim=-1)))
         bpr_loss_u_t = -torch.mean(torch.log2(torch.sigmoid(interaction_u_t_scores_pos - interaction_u_t_scores_neg).sum(dim=-1)))
 
-        bpr_loss_i_t = -torch.mean(torch.log2(torch.sigmoid(interaction_u_i_scores_pos-interaction_u_t_scores_neg).sum(dim=-1)))
-        bpr_loss_t_i = -torch.mean(torch.log2(torch.sigmoid(interaction_u_t_scores_pos-interaction_u_i_scores_neg).sum(dim=-1)))
-
         print("BPR Loss for u_i:", bpr_loss_u_i.item())
         print("BPR Loss for u_t:", bpr_loss_u_t.item())
-        print("BPR loss for image and text:", bpr_loss_i_t)
-        print("BPR loss for text and image:", bpr_loss_t_i)
+
         # Average loss for transformed u_i and u_t, including interaction loss
-        loss = (bpr_loss_u_i + bpr_loss_u_t).mean() + (bpr_loss_i_t + bpr_loss_t_i).mean() + self.cl_weight
+        loss = (bpr_loss_u_i + bpr_loss_u_t)/2 + self.cl_weight
         print("Total Loss:", loss.item())
         return loss
 
