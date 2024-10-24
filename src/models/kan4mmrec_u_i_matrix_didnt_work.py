@@ -43,8 +43,6 @@ class KAN4MMREC(GeneralRecommender):
         self.kan_image = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)  # For image interactions
         self.kan_text = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)   # For text interactions
 
-        self.SplineLinear = SplineLinear(self.n_users, self.n_items)
-
     def forward(self):
         # Transform embeddings
         image_embedding_transformed = self.image_trs(self.image_embedding.weight)
@@ -57,10 +55,10 @@ class KAN4MMREC(GeneralRecommender):
                 
         # Combine user embedding with image and text embeddings
         u_i = torch.matmul(u_transformed, i_transformed.transpose(0,1))  # Shape: [num_users, num_items]
-        u_i = self.SplineLinear(u_i)
+        u_i = self.FasterKAN(u_i)
 
         u_t = torch.matmul(u_transformed, t_transformed.transpose(0,1))  # Shape: [num_users, num_items]
-        u_t = self.SplineLinear(u_t)
+        u_t = self.FasterKAN(u_t)
 
         return u_i, u_t
 
@@ -77,19 +75,23 @@ class KAN4MMREC(GeneralRecommender):
         # Predict interaction scores for u_i and u_t
         u_i, u_t = self.forward()
 
+        # Normalized features
+        u_i_transformed = u_i / u_i.norm(p=2, dim=-1, keepdim=True)
+        u_t_transformed = u_t / u_t.norm(p=2, dim=-1, keepdim=True)
+
         # Interaction-based loss component
         users = interaction[0]  # Corresponding items that users interacted with (positive items)
         pos_items = interaction[1] # Positive items
         neg_items = interaction[2]  # Negative sampled items
 
         # Get the interaction scores for these user-item pairs from both image and text transformations
-        interaction_u_i_scores_pos = u_i[users, pos_items]  # Shape: [batch_size]
+        interaction_u_i_scores_pos = u_i_transformed[users, pos_items]  # Shape: [batch_size]
 
-        interaction_u_t_scores_pos = u_t[users, pos_items]  # Shape: [batch_size]
+        interaction_u_t_scores_pos = u_t_transformed[users, pos_items]  # Shape: [batch_size]
 
-        interaction_u_i_scores_neg = u_i[users, neg_items]  # Shape: [batch_size, num_neg_samples]
+        interaction_u_i_scores_neg = u_i_transformed[users, neg_items]  # Shape: [batch_size, num_neg_samples]
 
-        interaction_u_t_scores_neg = u_t[users, neg_items]  # Shape: [batch_size, num_neg_samples]
+        interaction_u_t_scores_neg = u_t_transformed[users, neg_items]  # Shape: [batch_size, num_neg_samples]
 
         # BPR Loss for interaction predictions
         bpr_loss_u_i = -torch.mean(torch.log2(torch.sigmoid(interaction_u_i_scores_pos - interaction_u_i_scores_neg).sum(dim=-1)))
@@ -128,15 +130,6 @@ class KAN4MMREC(GeneralRecommender):
         score_mat_ui = (user_image_scores + user_text_scores)/2  # Shape: [num_items]
 
         return score_mat_ui
-    
-class SplineLinear(nn.Linear):
-    def __init__(self, in_features: int, out_features: int, init_scale: float = 0.1, **kw) -> None:
-        self.init_scale = init_scale
-        super().__init__(in_features, out_features, bias=False, **kw)
-
-    def reset_parameters(self) -> None:
-        nn.init.xavier_uniform_(self.weight)  # Using Xavier Uniform initialization
-
 class KANTransformer(nn.Module):
     """
     KANsiglip class that functions as a transformer-like module with KAN rational activation,
@@ -187,10 +180,9 @@ class KANLayer(nn.Module):
         # Use the advanced Attention from katransformer.py
         self.norm1 = nn.LayerNorm(embedding_size)
         self.norm2 = nn.LayerNorm(embedding_size)
-        self.hidden_size = 64
 
         # Use the FasterKAN rational MLP
-        self.FasterKAN = FasterKAN(layers_hidden=[embedding_size, self.hidden_size, embedding_size])
+        self.FasterKAN = FasterKAN(layers_hidden=[embedding_size, embedding_size])
 
         # Stochastic depth and dropout
         self.drop_path = nn.Identity() if dropout == 0 else nn.Dropout(dropout)

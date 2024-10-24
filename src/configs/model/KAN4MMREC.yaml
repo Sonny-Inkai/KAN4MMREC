@@ -1,4 +1,4 @@
-embedding_size: 64
+embedding_size: 128
 
 n_layers: 1 
 dropout: [0.1] 
