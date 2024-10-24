@@ -85,6 +85,7 @@ class KAN4MMREC(GeneralRecommender):
         l2_reg = 1e-5 * (torch.sum(self.user_embedding.weight ** 2) + torch.sum(self.image_embedding.weight ** 2) + torch.sum(self.text_embedding.weight ** 2))
 
         loss = (bpr_loss_u_i + bpr_loss_u_t) / 2 + self.cl_weight + l2_reg
+        print(f"Total loss: {loss}")
         return loss
 
     def full_sort_predict(self, interaction):
