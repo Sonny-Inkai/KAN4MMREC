@@ -30,6 +30,7 @@ class RecDataset(object):
         # dataframe
         self.uid_field = self.config['USER_ID_FIELD']
         self.iid_field = self.config['ITEM_ID_FIELD']
+        self.rating_field = self.config['RATING_FIELD']
         self.splitting_label = self.config['inter_splitting_label']
 
         if df is not None:
@@ -49,7 +50,7 @@ class RecDataset(object):
 
     def load_inter_graph(self, file_name):
         inter_file = os.path.join(self.dataset_path, file_name)
-        cols = [self.uid_field, self.iid_field, self.splitting_label]
+        cols = [self.uid_field, self.iid_field, self.rating_field, self.splitting_label]
         self.df = pd.read_csv(inter_file, usecols=cols, sep=self.config['field_separator'])
         if not self.df.columns.isin(cols).all():
             raise ValueError('File {} lost some required columns.'.format(inter_file))
@@ -127,6 +128,7 @@ class RecDataset(object):
             info.extend(['The number of items: {}'.format(tmp_item_num),
                          'Average actions of items: {}'.format(avg_actions_of_items)])
         info.append('The number of inters: {}'.format(self.inter_num))
+       
         if self.uid_field and self.iid_field:
             sparsity = 1 - self.inter_num / tmp_user_num / tmp_item_num
             info.append('The sparsity of the dataset: {}%'.format(sparsity * 100))

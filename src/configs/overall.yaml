@@ -35,6 +35,7 @@ NEG_PREFIX: neg__
 USER_ID_FIELD: user_id:token
 ITEM_ID_FIELD: item_id:token
 TIME_FIELD: timestamp:float
+RATING_FIELD: rating:float
 field_separator: "\t"
 
 
