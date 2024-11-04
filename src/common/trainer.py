@@ -150,6 +150,12 @@ class Trainer(AbstractTrainer):
         for batch_idx, interaction in enumerate(train_data):
             self.optimizer.zero_grad()
             second_inter = interaction.clone()
+            print(interaction.shape)
+            # Interaction-based loss component
+            users = interaction[0]  # Corresponding items that users interacted with (positive items)
+            pos_items = interaction[1] # Positive items
+            neg_items = interaction[2]  # Negative sampled items
+            print(interaction[0].shape)
             losses = loss_func(interaction)
             pdb.set_trace()
             
