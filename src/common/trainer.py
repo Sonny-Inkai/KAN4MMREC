@@ -155,7 +155,15 @@ class Trainer(AbstractTrainer):
             users = interaction[0]  # Corresponding items that users interacted with (positive items)
             pos_items = interaction[1] # Positive items
             neg_items = interaction[2]  # Negative sampled items
-            print(interaction[0].shape)
+            print("user")
+            print(users.shape)
+            print(users[:10])
+            print("item")
+            print(pos_items.shape)
+            print(pos_items[:10])
+            print("rating")
+            print(neg_items.shape)
+            print(neg_items[:10])
             losses = loss_func(interaction)
             pdb.set_trace()
             
