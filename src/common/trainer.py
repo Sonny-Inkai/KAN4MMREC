@@ -12,7 +12,7 @@ import torch.optim as optim
 from torch.nn.utils.clip_grad import clip_grad_norm_
 import numpy as np
 import matplotlib.pyplot as plt
-import pdb
+import ipdb
 from time import time
 from logging import getLogger
 
@@ -150,7 +150,7 @@ class Trainer(AbstractTrainer):
         for batch_idx, interaction in enumerate(train_data):
             self.optimizer.zero_grad()
             second_inter = interaction.clone()
-            pdb.set_trace()
+            ipdb.set_trace()
             losses = loss_func(interaction)
             
             if isinstance(losses, tuple):
