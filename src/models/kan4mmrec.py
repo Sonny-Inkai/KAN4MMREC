@@ -46,7 +46,7 @@ class KAN4MMREC(GeneralRecommender):
         self.kan_image = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)  # For image interactions
         self.kan_text = KANTransformer(self.embedding_size, self.n_layers, dropout=self.dropout)   # For text interactions
 
-        self.SplineLinear = SplineLinear(self.n_items, self.n_items)
+        self.SplineLinear = SplineLinear(self.embedding_size, self.embedding_size)
         self.predictor = nn.Linear(self.n_items, self.n_items)
 
     def forward(self):
