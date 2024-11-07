@@ -97,7 +97,7 @@ class KAN4MMREC(GeneralRecommender):
         mf_v_loss = self.bpr_loss(u_transformed[users], i_transformed[pos_items], i_transformed[neg_items])
         mf_t_loss = self.bpr_loss(u_transformed[users], t_transformed[pos_items], t_transformed[neg_items])
 
-        total_loss = self.reg_weight * (mf_t_loss + mf_v_loss)
+        total_loss = self.cl_weight + mf_t_loss + mf_v_loss
         print(f"Total Loss: {total_loss}") 
         return total_loss
 
