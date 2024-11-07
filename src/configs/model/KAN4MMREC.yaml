@@ -1,7 +1,8 @@
-embedding_size: 128
+embedding_size: 32
 
-n_layers: 1 
-dropout: [0.1] 
+n_layers: 2 
+dropout: 0.1
 cl_weight: 1.0 
+reg_weight: [0.0, 1e-05, 1e-04, 1e-03]
 
-hyper_parameters: ['dropout']
+hyper_parameters: ['reg_weight']
