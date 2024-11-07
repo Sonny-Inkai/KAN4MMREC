@@ -16,84 +16,113 @@ import platform
 import os
 import torch
 
+
 def quick_start(model, dataset, config_dict, save_model=True, mg=False):
     # merge config dict
     config = Config(model, dataset, config_dict, mg)
     init_logger(config, mg)
     logger = getLogger()
-    # print config information
-    logger.info('██Server: \t' + platform.node())
-    logger.info('██Dir: \t' + os.getcwd() + '\n')
+    # print config infor
+    logger.info("██Server: \t" + platform.node())
+    logger.info("██Dir: \t" + os.getcwd() + "\n")
     logger.info(config)
-    
-    # Print config to console
-    print('Server:', platform.node())
-    print('Current Directory:', os.getcwd())
-    print('Config:', config)
+
+    # Debug prints
+    print("Server:", platform.node())
+    print("Current Directory:", os.getcwd())
+    print("Config:", config)
 
     # load data
     dataset = RecDataset(config)
     # print dataset statistics
     logger.info(str(dataset))
-    print('Dataset Statistics:', str(dataset))
+
+    # Debug prints
+    print("Dataset Statistics:", str(dataset))
 
     train_dataset, valid_dataset, test_dataset = dataset.split()
-    logger.info('\n====Training====\n' + str(train_dataset))
-    logger.info('\n====Validation====\n' + str(valid_dataset))
-    logger.info('\n====Testing====\n' + str(test_dataset))
-    
-    # Print dataset split info
-    print('\n====Training Dataset====\n', str(train_dataset))
-    print('\n====Validation Dataset====\n', str(valid_dataset))
-    print('\n====Testing Dataset====\n', str(test_dataset))
+    logger.info("\n====Training====\n" + str(train_dataset))
+    logger.info("\n====Validation====\n" + str(valid_dataset))
+    logger.info("\n====Testing====\n" + str(test_dataset))
+
+    # Debug prints
+    print("\n====Training Dataset====\n", str(train_dataset))
+    print("\n====Validation Dataset====\n", str(valid_dataset))
+    print("\n====Testing Dataset====\n", str(test_dataset))
 
     # wrap into dataloader
-    train_data = TrainDataLoader(config, train_dataset, batch_size=config['train_batch_size'], shuffle=True)
+    train_data = TrainDataLoader(
+        config, train_dataset, batch_size=config["train_batch_size"], shuffle=True
+    )
     (valid_data, test_data) = (
-        EvalDataLoader(config, valid_dataset, additional_dataset=train_dataset, batch_size=config['eval_batch_size']),
-        EvalDataLoader(config, test_dataset, additional_dataset=train_dataset, batch_size=config['eval_batch_size']))
+        EvalDataLoader(
+            config,
+            valid_dataset,
+            additional_dataset=train_dataset,
+            batch_size=config["eval_batch_size"],
+        ),
+        EvalDataLoader(
+            config,
+            test_dataset,
+            additional_dataset=train_dataset,
+            batch_size=config["eval_batch_size"],
+        ),
+    )
 
-    ############ Dataset loaded, run model
+    # Debug prints
+    print("Train DataLoader Initialized.")
+    print("Validation DataLoader Initialized.")
+    print("Test DataLoader Initialized.")
+
+    ############ Dataset loadded, run model
     hyper_ret = []
-    val_metric = config['valid_metric'].lower()
+    val_metric = config["valid_metric"].lower()
     best_test_value = 0.0
     idx = best_test_idx = 0
 
-    logger.info('\n\n=================================\n\n')
-    print('\n=================================\n')
+    logger.info("\n\n=================================\n\n")
+    print("\n=================================\n")
 
     # hyper-parameters
     hyper_ls = []
-    if "seed" not in config['hyper_parameters']:
-        config['hyper_parameters'] = ['seed'] + config['hyper_parameters']
-    for i in config['hyper_parameters']:
+    if "seed" not in config["hyper_parameters"]:
+        config["hyper_parameters"] = ["seed"] + config["hyper_parameters"]
+    for i in config["hyper_parameters"]:
         hyper_ls.append(config[i] or [None])
     # combinations
     combinators = list(product(*hyper_ls))
     total_loops = len(combinators)
     for hyper_tuple in combinators:
         # random seed reset
-        for j, k in zip(config['hyper_parameters'], hyper_tuple):
+        for j, k in zip(config["hyper_parameters"], hyper_tuple):
             config[j] = k
-        init_seed(config['seed'])   
+        init_seed(config["seed"])
 
-        logger.info('========={}/{}: Parameters:{}={}======='.format(
-            idx+1, total_loops, config['hyper_parameters'], hyper_tuple))
-        print('========={}/{}: Parameters:{}={}======='.format(
-            idx+1, total_loops, config['hyper_parameters'], hyper_tuple))
+        logger.info(
+            "========={}/{}: Parameters:{}={}=======".format(
+                idx + 1, total_loops, config["hyper_parameters"], hyper_tuple
+            )
+        )
+        print(
+            "========={}/{}: Parameters:{}={}=======".format(
+                idx + 1, total_loops, config["hyper_parameters"], hyper_tuple
+            )
+        )
 
         # set random state of dataloader
         train_data.pretrain_setup()
         # model loading and initialization
-        model = get_model(config['model'])(config, train_data).to(config['device'])
+        model = get_model(config["model"])(config, train_data).to(config["device"])
         logger.info(model)
-        print('Model Initialized:', model)
+        print("Model Initialized:", model)
 
         # trainer loading and initialization
         trainer = get_trainer()(config, model, mg)
         # debug
         # model training
-        best_valid_score, best_valid_result, best_test_upon_valid = trainer.fit(train_data, valid_data=valid_data, test_data=test_data, saved=save_model)
+        best_valid_score, best_valid_result, best_test_upon_valid = trainer.fit(
+            train_data, valid_data=valid_data, test_data=test_data, saved=save_model
+        )
         #########
         hyper_ret.append((hyper_tuple, best_valid_result, best_test_upon_valid))
 
@@ -103,38 +132,72 @@ def quick_start(model, dataset, config_dict, save_model=True, mg=False):
             best_test_idx = idx
         idx += 1
 
-        logger.info('best valid result: {}'.format(dict2str(best_valid_result)))
-        logger.info('test result: {}'.format(dict2str(best_test_upon_valid)))
-        logger.info('████Current BEST████:\nParameters: {}={},\n'
-                    'Valid: {},\nTest: {}\n\n\n'.format(config['hyper_parameters'],
-            hyper_ret[best_test_idx][0], dict2str(hyper_ret[best_test_idx][1]), dict2str(hyper_ret[best_test_idx][2])))
-        
-        # Print validation and test results
-        print('Best Validation Result:', dict2str(best_valid_result))
-        print('Test Result:', dict2str(best_test_upon_valid))
-        print('Current Best:\nParameters: {}={},\nValid: {},\nTest: {}\n'.format(
-            config['hyper_parameters'], hyper_ret[best_test_idx][0], dict2str(hyper_ret[best_test_idx][1]), dict2str(hyper_ret[best_test_idx][2])))
+        logger.info("best valid result: {}".format(dict2str(best_valid_result)))
+        logger.info("test result: {}".format(dict2str(best_test_upon_valid)))
+        logger.info(
+            "████Current BEST████:\nParameters: {}={},\n"
+            "Valid: {},\nTest: {}\n\n\n".format(
+                config["hyper_parameters"],
+                hyper_ret[best_test_idx][0],
+                dict2str(hyper_ret[best_test_idx][1]),
+                dict2str(hyper_ret[best_test_idx][2]),
+            )
+        )
+
+        # Debug prints
+        print("Best Validation Result:", dict2str(best_valid_result))
+        print("Test Result:", dict2str(best_test_upon_valid))
+        print(
+            "Current Best:\nParameters: {}={},\nValid: {},\nTest: {}\n".format(
+                config["hyper_parameters"],
+                hyper_ret[best_test_idx][0],
+                dict2str(hyper_ret[best_test_idx][1]),
+                dict2str(hyper_ret[best_test_idx][2]),
+            )
+        )
 
     # log info
-    logger.info('\n============All Over=====================')
-    print('\n============All Over=====================')
-    for (p, k, v) in hyper_ret:
-        logger.info('Parameters: {}={},\n best valid: {},\n best test: {}'.format(config['hyper_parameters'],
-                                                                                  p, dict2str(k), dict2str(v)))
-        print('Parameters: {}={},\n best valid: {},\n best test: {}'.format(config['hyper_parameters'], p, dict2str(k), dict2str(v)))
+    logger.info("\n============All Over=====================")
+    print("\n============All Over=====================")
+    for p, k, v in hyper_ret:
+        logger.info(
+            "Parameters: {}={},\n best valid: {},\n best test: {}".format(
+                config["hyper_parameters"], p, dict2str(k), dict2str(v)
+            )
+        )
+        print(
+            "Parameters: {}={},\n best valid: {},\n best test: {}".format(
+                config["hyper_parameters"], p, dict2str(k), dict2str(v)
+            )
+        )
 
-    logger.info('\n\n█████████████ BEST ████████████████')
-    logger.info('\tParameters: {}={},\nValid: {},\nTest: {}\n\n'.format(config['hyper_parameters'],
-                                                                   hyper_ret[best_test_idx][0],
-                                                                   dict2str(hyper_ret[best_test_idx][1]),
-                                                                   dict2str(hyper_ret[best_test_idx][2])))
-    print('\n\n█████████████ BEST ████████████████')
-    print('\tParameters: {}={},\nValid: {},\nTest: {}\n'.format(config['hyper_parameters'],
-                                                                   hyper_ret[best_test_idx][0],
-                                                                   dict2str(hyper_ret[best_test_idx][1]),
-                                                                   dict2str(hyper_ret[best_test_idx][2])))
+    logger.info("\n\n█████████████ BEST ████████████████")
+    logger.info(
+        "\tParameters: {}={},\nValid: {},\nTest: {}\n\n".format(
+            config["hyper_parameters"],
+            hyper_ret[best_test_idx][0],
+            dict2str(hyper_ret[best_test_idx][1]),
+            dict2str(hyper_ret[best_test_idx][2]),
+        )
+    )
+    print("\n\n█████████████ BEST ████████████████")
+    print(
+        "\tParameters: {}={},\nValid: {},\nTest: {}\n".format(
+            config["hyper_parameters"],
+            hyper_ret[best_test_idx][0],
+            dict2str(hyper_ret[best_test_idx][1]),
+            dict2str(hyper_ret[best_test_idx][2]),
+        )
+    )
 
-def quick_eval(model, dataset, config_dict, resume=None, metric=['recall@5', 'precision@5',	'map@5', 'ndcg@5']):
+
+def quick_eval(
+    model,
+    dataset,
+    config_dict,
+    resume=None,
+    metric=["recall@5", "precision@5", "map@5", "ndcg@5"],
+):
     # merge config dict
     config = Config(model, dataset, config_dict)
     # load data
@@ -145,36 +208,56 @@ def quick_eval(model, dataset, config_dict, resume=None, metric=['recall@5', 'pr
     str(train_dataset)
     str(valid_dataset)
     str(test_dataset)
-    # print('\n====Training====\n' + str(train_dataset))
-    # print('\n====Validation====\n' + str(valid_dataset))
-    # print('\n====Testing====\n' + str(test_dataset))
+    # Debug prints
+    print("\n====Training Dataset====\n", str(train_dataset))
+    print("\n====Validation Dataset====\n", str(valid_dataset))
+    print("\n====Testing Dataset====\n", str(test_dataset))
 
     # wrap into dataloader
-    train_data = TrainDataLoader(config, train_dataset, batch_size=config['train_batch_size'], shuffle=True)
+    train_data = TrainDataLoader(
+        config, train_dataset, batch_size=config["train_batch_size"], shuffle=True
+    )
     (valid_data, test_data) = (
-        EvalDataLoader(config, valid_dataset, additional_dataset=train_dataset, batch_size=config['eval_batch_size']),
-        EvalDataLoader(config, test_dataset, additional_dataset=train_dataset, batch_size=config['eval_batch_size']))
+        EvalDataLoader(
+            config,
+            valid_dataset,
+            additional_dataset=train_dataset,
+            batch_size=config["eval_batch_size"],
+        ),
+        EvalDataLoader(
+            config,
+            test_dataset,
+            additional_dataset=train_dataset,
+            batch_size=config["eval_batch_size"],
+        ),
+    )
+
+    # Debug prints
+    print("Train DataLoader Initialized.")
+    print("Validation DataLoader Initialized.")
+    print("Test DataLoader Initialized.")
 
     # hyper-parameters
     hyper_ls = []
-    if "seed" not in config['hyper_parameters']:
-        config['hyper_parameters'] = ['seed'] + config['hyper_parameters']
-    for i in config['hyper_parameters']:
+    if "seed" not in config["hyper_parameters"]:
+        config["hyper_parameters"] = ["seed"] + config["hyper_parameters"]
+    for i in config["hyper_parameters"]:
         hyper_ls.append(config[i] or [None])
     # combinations
     combinators = list(product(*hyper_ls))
     for hyper_tuple in combinators:
         # random seed reset
-        for j, k in zip(config['hyper_parameters'], hyper_tuple):
+        for j, k in zip(config["hyper_parameters"], hyper_tuple):
             config[j] = k
-            
-        init_seed(config['seed'])
-            
+
+        init_seed(config["seed"])
+
         # set random state of dataloader
         train_data.pretrain_setup()
         # model loading and initialization
-        model = get_model(config['model'])(config, train_data).to(config['device'])
-        
+        model = get_model(config["model"])(config, train_data).to(config["device"])
+        print("Model Initialized:", model)
+
         # trainer loading and initialization
         trainer = get_trainer()(config, model)
         if resume != None:
@@ -184,10 +267,10 @@ def quick_eval(model, dataset, config_dict, resume=None, metric=['recall@5', 'pr
                 del state_dict["t_preference"]
             model.load_state_dict(state_dict, strict=False)
             print(f"load model parameter from {resume}. ")
-        
+
         model.pre_epoch_processing()
         metric_dict_test = trainer.evaluate(test_data)
         metric_test = [str(metric_dict_test[i]) for i in metric]
         print("\t".join(metric))
-        print('\t'.join(metric_test))
+        print("\t".join(metric_test))
         break
