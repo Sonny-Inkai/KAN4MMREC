@@ -12,7 +12,6 @@ import torch.optim as optim
 from torch.nn.utils.clip_grad import clip_grad_norm_
 import numpy as np
 import matplotlib.pyplot as plt
-import pdb
 from time import time
 from logging import getLogger
 
@@ -165,7 +164,6 @@ class Trainer(AbstractTrainer):
             print(neg_items.shape)
             print(neg_items[:10])
             losses = loss_func(interaction)
-            pdb.set_trace()
             
             if isinstance(losses, tuple):
                 loss = sum(losses)
