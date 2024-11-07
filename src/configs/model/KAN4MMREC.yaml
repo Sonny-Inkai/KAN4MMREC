@@ -1,6 +1,6 @@
-embedding_size: 32
+embedding_size: 64
 
-n_layers: 2 
+n_layers: 1 
 dropout: 0.1
 cl_weight: 1.0 
 reg_weight: [1e-04]
