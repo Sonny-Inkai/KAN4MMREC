@@ -295,8 +295,10 @@ class Trainer(AbstractTrainer):
             )
             post_info = self.model.post_epoch_processing()
             if verbose:
+                print(train_loss_output)
                 self.logger.info(train_loss_output)
                 if post_info is not None:
+                    print(post_info)
                     self.logger.info(post_info)
 
             # eval: To ensure the test result is the best model under validation data, set self.eval_step == 1
@@ -321,8 +323,11 @@ class Trainer(AbstractTrainer):
                 # test
                 _, test_result = self._valid_epoch(test_data)
                 if verbose:
+                    print(valid_score_output)
                     self.logger.info(valid_score_output)
+                    print(valid_result_output)
                     self.logger.info(valid_result_output)
+                    print("test result: \n" + dict2str(test_result))
                     self.logger.info("test result: \n" + dict2str(test_result))
                 if update_flag:
                     update_output = (
